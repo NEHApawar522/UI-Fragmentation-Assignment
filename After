@@ -1,1 +1,94 @@
+// BurnPage.js
+
+import React, { useState, useEffect, ChangeEvent } from 'react';
+import styled from 'styled-components';
+import { useWallet, useChainSelector, useAppSupplies, useEthersSigner, useAppToast } from './hooks';
+import { BurnButtonBar } from './components/BurnButtonBar';
+import { BurnStatsContainer } from './components/BurnStatsContainer';
+import { BurnTxTable } from './components/BurnTxTable';
+import { ChainSelector } from './components/ChainSelector';
+import { AppToast } from './components/AppToast';
+import { Button, CircularProgress } from '@material-ui/core';
+import { AppIcon, AppExtLink, AppTooltip } from './components/common';
+import { CoinGeckoApi } from './api/CoinGeckoApi';
+import { ChainScanner } from './api/ChainScanner';
+import { fetchAddressForChain, isChainTestnet, numberWithCommas, prettyEthAddress, parseEther, chainEnum, zeroAddress } from './utils';
+import { mainnet, avalanche, fantom, sepolia, avalancheFuji, fantomTestnet } from './constants';
+import { Contract } from 'ethers';
+import { oftAbi } from './abi/oftAbi';
+import { DashboardLayoutStyled, TransactionTableStyled } from './styles';
+
+export const BurnPage = () => {
+  const { walletAddress, isWalletConnected, walletBalance, isBalanceError, openChainModal, walletChain, chains, openConnectModal } = useWallet();
+  const { openChainSelector, setOpenChainSelector, openChainSelectorModal } = useChainSelector();
+  const { chains: receiveChains } = useWallet();
+  const { supplies, allSupplies, setSuppliesChain, suppliesChain, fetchSupplies } = useAppSupplies(true);
+  const [burnTransactions, setBurnTransactions] = useState<any[]>([]);
+  const [isOldToken, setIsOldToken] = useState(false);
+  const [burnAmount, setBurnAmount] = useState("");
+  const { toastMsg, toastSev, showToast } = useAppToast();
+  const ethersSigner = useEthersSigner({ chainId: walletChain?.id ?? chainEnum.mainnet });
+  const [txButton, setTxButton] = useState<BurnTxProgress>(BurnTxProgress.default);
+  const [txProgress, setTxProgress] = useState<boolean>(false);
+  const [approveTxHash, setApproveTxHash] = useState<string | null>(null);
+  const [burnTxHash, setBurnTxHash] = useState<string | null>(null);
+  const statsSupplies = supplies;
+  const tokenAddress = fetchAddressForChain(suppliesChain?.id, isOldToken ? "oldToken" : "newToken");
+  const [coinData, setCoinData] = useState<any>({});
+
+  useEffect(() => {
+    CoinGeckoApi.fetchCoinData()
+      .then((data: any) => {
+        setCoinData(data?.market_data);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  }, []);
+
+  const onChangeBurnAmount = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value == "") setBurnAmount("");
+    if (isNaN(parseFloat(e.target.value))) return;
+    setBurnAmount(e.target.value);
+  };
+
+  const refetchTransactions = () => {
+    Promise.all(ChainScanner.fetchAllTxPromises(isChainTestnet(walletChain?.id)))
+      .then((results: any) => {
+        let res = results.flat();
+        res = ChainScanner.sortOnlyBurnTransactions(res);
+        res = res.sort((a: any, b: any) => b.timeStamp - a.timeStamp);
+        setBurnTransactions(res);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  };
+
+  const executeBurn = async () => {
+    if (!isWalletConnected) {
+      openConnectModal();
+    }
+    if (burnAmount === "") {
+      console.log("Enter amount to migrate");
+      showToast("Enter amount to migrate", ToastSeverity.warning);
+      return;
+    }
+    const newTokenAddress = fetchAddressForChain(walletChain?.id, "newToken");
+    const oftTokenContract = new Contract(newTokenAddress, oftAbi, ethersSigner);
+    let amount = parseEther(burnAmount);
+    setTxButton(BurnTxProgress.burning);
+    setTxProgress(true);
+    try {
+      const burnTx = await oftTokenContract.burn(amount);
+      setBurnTxHash(burnTx.hash);
+      await burnTx.wait();
+      setTxButton(BurnTxProgress.default);
+      setTxProgress(false);
+      refetchTransactions();
+      fetchSupplies();
+    } catch (err) {
+      console.log(err);
+      setTxButton(BurnTxProgress.default);
+      setTxProgress(false
 
