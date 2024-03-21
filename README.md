@@ -11,4 +11,3 @@ Component Responsibilities: Each new component will have a clear and specific re
 
 Reuse of Hooks: I'll ensure that custom hooks such as useWallet, useChainSelector, and useAppSupplies are still utilized within the appropriate components to maintain functionality and reusability.
 
-Improving Readability: By breaking the UI into smaller components, the code will become more readable, as each component will focus on a specific aspect of the UI. This will also make it easier to navigate and understand the codebase for future developers.
